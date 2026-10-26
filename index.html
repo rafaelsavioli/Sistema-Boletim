@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101827"><title>Sistema de Boletins</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#inicio" aria-label="Sistema de Boletins - início"><span class="brand-mark">B<span>.</span></span><span class="brand-name">boletim<span>gestão escolar</span></span></a>
+      <div class="school-chip"><span class="school-icon">▦</span><span>Escola Horizonte<small>Ano letivo 2026</small></span><span class="chevron">⌄</span></div>
+      <p class="nav-label">MENU PRINCIPAL</p>
+      <nav class="main-nav" aria-label="Menu principal">
+        <a class="nav-item active" href="#inicio" data-page="inicio"><span>◫</span> Visão geral</a>
+        <a class="nav-item" href="#alunos" data-page="alunos"><span>♙</span> Alunos</a>
+        <a class="nav-item" href="#turmas" data-page="turmas"><span>▦</span> Turmas</a>
+        <a class="nav-item" href="#matriculas" data-page="matriculas"><span>▤</span> Matrículas</a>
+        <a class="nav-item" href="#disciplinas" data-page="disciplinas"><span>▧</span> Disciplinas</a>
+        <a class="nav-item" href="#notas" data-page="notas"><span>✎</span> Lançar notas</a>
+        <a class="nav-item" href="#boletim" data-page="boletim"><span>▣</span> Boletim</a>
+      </nav>
+      <div class="sidebar-bottom"><div class="help-card"><span class="help-bubble">?</span><b>Precisa de ajuda?</b><p>Consulte as orientações de uso do sistema.</p><a href="#ajuda">Acessar suporte <span>↗</span></a></div><div class="profile"><div class="avatar">RS</div><div><b>Rafael Savioli</b><small>Administrador</small></div><button class="icon-button" aria-label="Opções do perfil">···</button></div></div>
+    </aside>
+    <main class="main-content">
+      <header class="topbar"><button class="mobile-menu" id="mobile-menu" aria-label="Abrir menu">☰</button><div class="breadcrumb">Painel <span>/</span> <b id="breadcrumb-current">Visão geral</b></div><div class="top-actions"><span class="academic-year">◷ &nbsp; Ano letivo 2026</span><button class="icon-button notification" aria-label="Notificações">♧<i></i></button><div class="top-avatar">RS</div></div></header>
+      <div id="view" class="view"></div>
+      <footer>© 2026 Sistema de Boletins <span>Feito para simplificar a rotina escolar <b>✦</b></span></footer>
+    </main>
+  </div>
+  <div id="toast-region" class="toast-region" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
