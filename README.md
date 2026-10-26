@@ -27,4 +27,4 @@ Acesse http://localhost:3000. Os dados iniciais de demonstração são criados a
 npm test
 ```
 
-O servidor usa apenas módulos nativos do Node.js. Para alterar a porta, defina `PORT`, por exemplo `PORT=4000 npm start`.
+A aplicação usa os módulos nativos do Node.js no modo JSON. Para usar MySQL, instale as dependências com `npm ci`, crie uma base e aplique `schema.sql` como administrador; configure `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER` e `MYSQL_PASSWORD` no ambiente da aplicação. A conta da aplicação precisa apenas de `SELECT`, `INSERT` e `UPDATE` em `app_state`; o sistema não executa DDL durante a inicialização. `BASE_PATH` opcional monta a interface em um caminho prefixado, e `PORT` define a porta local.

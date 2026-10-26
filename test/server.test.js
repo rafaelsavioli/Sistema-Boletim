@@ -58,6 +58,24 @@ test('cadastro, vínculo por série e matrícula validam as regras escolares', a
   });
 });
 
+test('aplicação pode ser montada em um caminho com token e bloqueia caminhos fora dele', async () => {
+  const dir = fs.mkdtempSync(path.join(__dirname, '..', '.test-data-'));
+  const server = createServer(path.join(dir, 'data.json'), { basePath: '/boletim/secreto' });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const allowed = await fetch(base + '/boletim/secreto/api/data');
+    const denied = await fetch(base + '/api/data');
+    const page = await fetch(base + '/boletim/secreto/');
+    assert.equal(allowed.status, 200);
+    assert.equal(denied.status, 404);
+    assert.equal(page.status, 200);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('nota é limitada a 0–10 e boletim calcula média apenas com trimestres registrados', async () => {
   await withServer(async base => {
     const { data } = await request(base, '/api/data');

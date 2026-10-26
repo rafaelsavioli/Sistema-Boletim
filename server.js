@@ -33,26 +33,61 @@ const seed = () => ({
   ]
 });
 
-function createServer(dataFile = path.join(__dirname, 'data.json')) {
-  function load() {
+function createServer(dataFile = path.join(__dirname, 'data.json'), options = {}) {
+  const basePath = (options.basePath ?? process.env.BASE_PATH ?? '').replace(/\/$/, '');
+  const mysqlConfig = options.mysqlConfig ?? (process.env.MYSQL_DATABASE ? {
+    host: process.env.MYSQL_HOST || '127.0.0.1',
+    port: Number(process.env.MYSQL_PORT || 3306),
+    user: process.env.MYSQL_USER,
+    password: process.env.MYSQL_PASSWORD,
+    database: process.env.MYSQL_DATABASE,
+    connectionLimit: 4
+  } : null);
+  const pool = options.pool || (mysqlConfig ? require('mysql2/promise').createPool(mysqlConfig) : null);
+  let mysqlData = null;
+  async function load() {
+    if (pool) {
+      if (mysqlData) return mysqlData;
+      const [rows] = await pool.execute('SELECT payload FROM app_state WHERE id = 1');
+      if (rows.length) mysqlData = typeof rows[0].payload === 'string' ? JSON.parse(rows[0].payload) : rows[0].payload;
+      else {
+        mysqlData = seed();
+        await pool.execute('INSERT INTO app_state (id, payload) VALUES (1, ?)', [JSON.stringify(mysqlData)]);
+      }
+      return mysqlData;
+    }
     try { return JSON.parse(fs.readFileSync(dataFile, 'utf8')); }
     catch (error) {
       if (error.code !== 'ENOENT') throw error;
-      const initial = seed(); save(initial); return initial;
+      const initial = seed(); await save(initial); return initial;
     }
   }
-  function save(data) {
+  async function save(data) {
+    if (pool) {
+      await pool.execute('UPDATE app_state SET payload = ? WHERE id = 1', [JSON.stringify(data)]);
+      mysqlData = data;
+      return;
+    }
     fs.mkdirSync(path.dirname(dataFile), { recursive: true });
     const temp = `${dataFile}.${process.pid}.tmp`;
     fs.writeFileSync(temp, JSON.stringify(data, null, 2));
     fs.renameSync(temp, dataFile);
   }
   const json = (res, status, value) => { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); };
-  const server = http.createServer(async (req, res) => {
+  const server = http.createServer((req, res) => {
+    handleRequest(req, res).catch(() => json(res, 500, { error: 'Falha interna ao processar a solicitação.' }));
+  });
+  async function handleRequest(req, res) {
     const url = new URL(req.url, 'http://localhost');
-    if (req.method === 'GET' && url.pathname === '/api/data') return json(res, 200, load());
-    if (req.method === 'GET' && url.pathname === '/api/report') {
-      const data = load();
+    let routePath = url.pathname;
+    if (basePath) {
+      if (routePath === basePath) { res.writeHead(302, { location: `${basePath}/` }); return res.end(); }
+      if (!routePath.startsWith(`${basePath}/`)) return json(res, 404, { error: 'Rota não encontrada.' });
+      routePath = routePath.slice(basePath.length) || '/';
+    }
+    if (req.method === 'GET' && routePath === '/api/data') return json(res, 200, await load());
+    if (req.method === 'GET' && routePath === '/api/report') {
+      const data = await load();
       const enrollment = data.enrollments.find(item => item.id === url.searchParams.get('enrollmentId'));
       if (!enrollment) return json(res, 404, { error: 'Matrícula não encontrada.' });
       const schoolClass = data.classes.find(item => item.id === enrollment.classId);
@@ -63,45 +98,45 @@ function createServer(dataFile = path.join(__dirname, 'data.json')) {
       });
       return json(res, 200, { student: data.students.find(item => item.id === enrollment.studentId), schoolClass, enrollment, rows });
     }
-    if (req.method.startsWith('POST') && url.pathname.startsWith('/api/')) {
+    if (req.method.startsWith('POST') && routePath.startsWith('/api/')) {
       let body;
       try { let raw = ''; for await (const chunk of req) raw += chunk; body = JSON.parse(raw || '{}'); }
       catch { return json(res, 400, { error: 'Envie dados JSON válidos.' }); }
-      const data = load();
+      const data = await load();
       const text = value => typeof value === 'string' ? value.trim() : '';
       const id = () => crypto.randomUUID();
-      if (url.pathname === '/api/students') {
+      if (routePath === '/api/students') {
         const name = text(body.name), registration = text(body.registration);
         if (!name || !registration) return json(res, 400, { error: 'Informe nome e matrícula.' });
         if (data.students.some(item => item.registration.toLowerCase() === registration.toLowerCase())) return json(res, 400, { error: 'Essa matrícula já está cadastrada.' });
-        const student = { id: id(), name, registration }; data.students.push(student); save(data); return json(res, 201, student);
+        const student = { id: id(), name, registration }; data.students.push(student); await save(data); return json(res, 201, student);
       }
-      if (url.pathname === '/api/classes') {
+      if (routePath === '/api/classes') {
         const grade = text(body.grade), group = text(body.group), year = Number(body.year);
         if (!grade || !group || !Number.isInteger(year) || year < 2000 || year > 2100) return json(res, 400, { error: 'Informe série, turma e ano letivo válido.' });
         if (data.classes.some(item => item.grade === grade && item.group.toLowerCase() === group.toLowerCase() && item.year === year)) return json(res, 400, { error: 'Essa turma já existe neste ano letivo.' });
-        const schoolClass = { id: id(), grade, group, year }; data.classes.push(schoolClass); save(data); return json(res, 201, schoolClass);
+        const schoolClass = { id: id(), grade, group, year }; data.classes.push(schoolClass); await save(data); return json(res, 201, schoolClass);
       }
-      if (url.pathname === '/api/subjects') {
+      if (routePath === '/api/subjects') {
         const name = text(body.name);
         if (!name) return json(res, 400, { error: 'Informe o nome da disciplina.' });
         if (data.subjects.some(item => item.name.toLowerCase() === name.toLowerCase())) return json(res, 400, { error: 'Essa disciplina já está cadastrada.' });
-        const subject = { id: id(), name, grades: [] }; data.subjects.push(subject); save(data); return json(res, 201, subject);
+        const subject = { id: id(), name, grades: [] }; data.subjects.push(subject); await save(data); return json(res, 201, subject);
       }
-      if (url.pathname === '/api/subjects/link') {
+      if (routePath === '/api/subjects/link') {
         const subject = data.subjects.find(item => item.id === body.subjectId);
         if (!subject || !text(body.grade)) return json(res, 400, { error: 'Selecione uma disciplina e uma série.' });
         if (!subject.grades.includes(body.grade)) subject.grades.push(body.grade);
-        save(data); return json(res, 200, subject);
+        await save(data); return json(res, 200, subject);
       }
-      if (url.pathname === '/api/enrollments') {
+      if (routePath === '/api/enrollments') {
         const student = data.students.find(item => item.id === body.studentId), schoolClass = data.classes.find(item => item.id === body.classId);
         if (!student || !schoolClass) return json(res, 400, { error: 'Selecione um aluno e uma turma.' });
         const existing = data.enrollments.find(item => item.studentId === student.id && data.classes.find(c => c.id === item.classId)?.year === schoolClass.year);
         if (existing) return json(res, 400, { error: 'Este aluno já possui matrícula neste ano letivo.' });
-        const enrollment = { id: id(), studentId: student.id, classId: schoolClass.id }; data.enrollments.push(enrollment); save(data); return json(res, 201, enrollment);
+        const enrollment = { id: id(), studentId: student.id, classId: schoolClass.id }; data.enrollments.push(enrollment); await save(data); return json(res, 201, enrollment);
       }
-      if (url.pathname === '/api/grades') {
+      if (routePath === '/api/grades') {
         const enrollment = data.enrollments.find(item => item.id === body.enrollmentId);
         const subject = data.subjects.find(item => item.id === body.subjectId);
         const term = Number(body.term), grade = Number(body.grade);
@@ -110,12 +145,12 @@ function createServer(dataFile = path.join(__dirname, 'data.json')) {
         let saved = data.grades.find(item => item.enrollmentId === enrollment.id && item.subjectId === subject.id && item.term === term);
         if (saved) saved.grade = grade;
         else { saved = { id: id(), enrollmentId: enrollment.id, subjectId: subject.id, term, grade }; data.grades.push(saved); }
-        save(data); return json(res, 201, saved);
+        await save(data); return json(res, 201, saved);
       }
     }
     if (req.method === 'GET') {
       const root = path.resolve(__dirname);
-      const requested = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname.slice(1));
+      const requested = routePath === '/' ? 'index.html' : decodeURIComponent(routePath.slice(1));
       const file = path.resolve(root, requested);
       if (!file.startsWith(root + path.sep)) return json(res, 403, { error: 'Acesso negado.' });
       fs.readFile(file, (error, content) => {
@@ -126,12 +161,13 @@ function createServer(dataFile = path.join(__dirname, 'data.json')) {
       return;
     }
     json(res, 404, { error: 'Rota não encontrada.' });
-  });
+  }
+  if (pool) server.on('close', () => pool.end());
   return server;
 }
 
 if (require.main === module) {
   const port = Number(process.env.PORT || 3000);
-  createServer().listen(port, '0.0.0.0', () => console.log(`Sistema de Boletins disponível em http://localhost:${port}`));
+  createServer().listen(port, '127.0.0.1', () => console.log(`Sistema de Boletins disponível localmente na porta ${port}`));
 }
 module.exports = { createServer };
